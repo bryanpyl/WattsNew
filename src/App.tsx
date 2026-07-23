@@ -411,17 +411,38 @@ export default function App() {
       const BUTTON_A_CHAR_UUID = 'e95dda90-251d-470a-a062-fa1922dfa9a8';
       const BUTTON_B_CHAR_UUID = 'e95dda91-251d-470a-a062-fa1922dfa9a8';
 
-      const device = await (navigator as any).bluetooth.requestDevice({
-        filters: [{ namePrefix: 'BBC micro:bit' }],
-        optionalServices: [BUTTON_SERVICE_UUID]
-      });
+      let device;
+      try {
+        device = await (navigator as any).bluetooth.requestDevice({
+          filters: [
+            { namePrefix: 'BBC micro:bit' },
+            { namePrefix: 'micro:bit' },
+            { services: [BUTTON_SERVICE_UUID] }
+          ],
+          optionalServices: [BUTTON_SERVICE_UUID]
+        });
+      } catch (filterErr: any) {
+        if (filterErr.name === 'NotFoundError') throw filterErr;
+        // Fallback: accept all devices if filter scanning is restricted on domain
+        device = await (navigator as any).bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [BUTTON_SERVICE_UUID]
+        });
+      }
 
       device.addEventListener('gattserverdisconnected', onDisconnected);
 
-      let server = await device.gatt.connect();
+      let server;
+      try {
+        server = await device.gatt.connect();
+      } catch (connErr) {
+        console.warn('Initial GATT connect retry:', connErr);
+        await new Promise((res) => setTimeout(res, 500));
+        server = await device.gatt.connect();
+      }
 
-      // Wait 300ms to allow Windows Bluetooth GATT handshake to complete
-      await new Promise((res) => setTimeout(res, 300));
+      // Wait 500ms to allow Windows Bluetooth GATT handshake to complete on HTTPS origin
+      await new Promise((res) => setTimeout(res, 500));
 
       if (!device.gatt.connected) {
         server = await device.gatt.connect();
