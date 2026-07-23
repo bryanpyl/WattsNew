@@ -1,0 +1,157 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", sans-serif;
+
+  --color-app-bg: var(--bg-app);
+  --color-panel-bg: var(--bg-panel);
+  --color-panel-hover: var(--bg-panel-hover);
+  --color-panel-active: var(--bg-panel-active);
+  --color-border-custom: var(--border-color);
+  
+  --color-text-main: var(--text-primary);
+  --color-text-sub: var(--text-secondary);
+  --color-text-dim: var(--text-muted);
+  
+  --color-energy-amber: var(--accent-amber);
+  --color-energy-cyan: var(--accent-cyan);
+  --color-energy-green: var(--accent-green);
+  --color-energy-red: var(--accent-red);
+}
+
+:root {
+  --bg-app: #0B1220;
+  --bg-panel: #121B2E;
+  --bg-panel-hover: #172136;
+  --bg-panel-active: #1C273D;
+  --border-color: #26324A;
+  
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  
+  --accent-amber: #FFC53D;
+  --accent-cyan: #4CC9F0;
+  --accent-green: #4ADE80;
+  --accent-red: #F87171;
+}
+
+:root[data-theme="light"] {
+  --bg-app: #F1F5F9;
+  --bg-panel: #FFFFFF;
+  --bg-panel-hover: #F8FAFC;
+  --bg-panel-active: #E2E8F0;
+  --border-color: #CBD5E1;
+  
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #64748B;
+  
+  --accent-amber: #D97706; /* high-contrast amber for light backgrounds */
+  --accent-cyan: #0891B2;  /* high-contrast cyan for light backgrounds */
+  --accent-green: #16A34A; /* high-contrast green */
+  --accent-red: #DC2626;   /* high-contrast red */
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Custom glow effects depending on theme */
+.ambient-glow-dark {
+  background-image: linear-gradient(
+    -45deg, 
+    rgba(76, 201, 240, 0.06) 0%, 
+    rgba(76, 201, 240, 0.25) 25%, 
+    rgba(255, 197, 61, 0.18) 50%, 
+    rgba(76, 201, 240, 0.25) 75%,
+    rgba(76, 201, 240, 0.06) 100%
+  );
+  background-size: 400% 400%;
+  animation: waveGradient 15s ease-in-out infinite alternate;
+}
+
+.ambient-glow-light {
+  background-image: linear-gradient(
+    -45deg, 
+    rgba(8, 145, 178, 0.06) 0%, 
+    rgba(8, 145, 178, 0.25) 25%, 
+    rgba(217, 119, 6, 0.18) 50%, 
+    rgba(8, 145, 178, 0.25) 75%,
+    rgba(8, 145, 178, 0.06) 100%
+  );
+  background-size: 400% 400%;
+  animation: waveGradient 15s ease-in-out infinite alternate;
+}
+
+@keyframes waveGradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Technical Dashboard Classes */
+.lcd-glow {
+  text-shadow: 0 0 10px rgba(76, 201, 240, 0.4);
+}
+
+:root[data-theme="light"] .lcd-glow {
+  text-shadow: 0 0 6px rgba(8, 145, 178, 0.25);
+}
+
+.amber-glow {
+  text-shadow: 0 0 10px rgba(255, 197, 61, 0.4);
+}
+
+:root[data-theme="light"] .amber-glow {
+  text-shadow: 0 0 6px rgba(217, 119, 6, 0.25);
+}
+
+.glass-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+}
+
+.active-pulse {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent-cyan);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Scrollbar customizations */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-app);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+

@@ -1,0 +1,6 @@
+{
+  "name": "Watt's Up",
+  "description": "A playful household electricity usage tracker and simulator with physical micro:bit connectivity, real-time load meter, and cost breakdown charts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
