@@ -85,6 +85,23 @@ export default function App() {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
+  const [showMicrobitAssignModal, setShowMicrobitAssignModal] = useState(false);
+  const [tempAssignments, setTempAssignments] = useState<{ A: string | null; B: string | null }>({ A: null, B: null });
+
+  const [buttonAssignments, setButtonAssignments] = useState<{ A: string | null; B: string | null }>(() => {
+    const saved = localStorage.getItem('watts_up_buttons');
+    if (saved) {
+      try { return JSON.parse(saved); } catch { return { A: null, B: null }; }
+    }
+    return { A: 'ac', B: 'washing_machine' };
+  });
+
+  const buttonAssignmentsRef = useRef(buttonAssignments);
+  useEffect(() => {
+    buttonAssignmentsRef.current = buttonAssignments;
+    localStorage.setItem('watts_up_buttons', JSON.stringify(buttonAssignments));
+  }, [buttonAssignments]);
+
   // Close Add Menu on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -181,7 +198,7 @@ export default function App() {
   const todayUsageDetails = useMemo(() => {
     const usageMap: { [id: string]: { kwh: number; seconds: number } } = {};
     let totalKwh = 0;
-    
+
     appliances.forEach((app) => {
       const record = history[todayStr]?.[app.id] || { kwh: 0, seconds: 0 };
       usageMap[app.id] = record;
@@ -226,6 +243,28 @@ export default function App() {
     setShowAddMenu(false);
   };
 
+  const handleSaveAssignments = () => {
+    setButtonAssignments(tempAssignments);
+
+    // Add appliances to dashboard if they are not there
+    const idsToAdd = [tempAssignments.A, tempAssignments.B].filter(Boolean) as string[];
+
+    setAppliances(prev => {
+      const newAppliances = [...prev];
+      idsToAdd.forEach(id => {
+        if (!newAppliances.find(a => a.id === id)) {
+          const appTemplate = ALL_APPLIANCES.find(a => a.id === id);
+          if (appTemplate) {
+            newAppliances.push({ ...appTemplate, isOn: false });
+          }
+        }
+      });
+      return newAppliances;
+    });
+
+    setShowMicrobitAssignModal(false);
+  };
+
   const handleTariffChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     const parsed = parseFloat(value);
@@ -253,7 +292,7 @@ export default function App() {
     const numDaysLogged = Object.keys(history).length;
     let projected = pastDaysCost;
     if (numDaysLogged > 0 && numDaysLogged < 30) {
-       projected = (pastDaysCost / numDaysLogged) * 30;
+      projected = (pastDaysCost / numDaysLogged) * 30;
     }
     // Add some random base cost to represent existing mock month data if history is empty
     if (numDaysLogged === 0) projected = 250.45 * tariffRate;
@@ -268,9 +307,9 @@ export default function App() {
     try {
       const value = event.target.value.getUint8(0);
       if (value === 1) { // 1 = pressed
-        const list = appliancesRef.current;
-        if (list.find(a => a.id === 'ac')) {
-          handleToggleAppliance('ac');
+        const assignedId = buttonAssignmentsRef.current.A;
+        if (assignedId) {
+          handleToggleAppliance(assignedId);
         }
       }
     } catch (err) {
@@ -282,9 +321,9 @@ export default function App() {
     try {
       const value = event.target.value.getUint8(0);
       if (value === 1) { // 1 = pressed
-        const list = appliancesRef.current;
-        if (list.find(a => a.id === 'washing_machine')) {
-          handleToggleAppliance('washing_machine');
+        const assignedId = buttonAssignmentsRef.current.B;
+        if (assignedId) {
+          handleToggleAppliance(assignedId);
         }
       }
     } catch (err) {
@@ -329,9 +368,12 @@ export default function App() {
       setConnectedDeviceName('BBC micro:bit (USB Cable)');
       setMicrobitStatus('connected');
 
+      setTempAssignments(buttonAssignmentsRef.current);
+      setShowMicrobitAssignModal(true);
+
       // Setup reader stream
       const textDecoder = new TextDecoderStream();
-      port.readable.pipeTo(textDecoder.writable).catch(() => {});
+      port.readable.pipeTo(textDecoder.writable).catch(() => { });
       const reader = textDecoder.readable.getReader();
       serialReaderRef.current = reader;
 
@@ -349,15 +391,11 @@ export default function App() {
               for (const line of lines) {
                 const trimmed = line.trim().toUpperCase();
                 if (trimmed.includes('BUTTON_A') || trimmed === 'A' || trimmed === '1') {
-                  const list = appliancesRef.current;
-                  if (list.find(a => a.id === 'ac')) {
-                    handleToggleAppliance('ac');
-                  }
+                  const assignedId = buttonAssignmentsRef.current.A;
+                  if (assignedId) handleToggleAppliance(assignedId);
                 } else if (trimmed.includes('BUTTON_B') || trimmed === 'B' || trimmed === '2') {
-                  const list = appliancesRef.current;
-                  if (list.find(a => a.id === 'washing_machine')) {
-                    handleToggleAppliance('washing_machine');
-                  }
+                  const assignedId = buttonAssignmentsRef.current.B;
+                  if (assignedId) handleToggleAppliance(assignedId);
                 }
               }
             }
@@ -463,6 +501,9 @@ export default function App() {
       setConnectedDevice(device);
       setConnectedDeviceName(device.name || 'BBC micro:bit (Bluetooth)');
       setMicrobitStatus('connected');
+
+      setTempAssignments(buttonAssignmentsRef.current);
+      setShowMicrobitAssignModal(true);
     } catch (error: any) {
       console.error('Web Bluetooth connection failed:', error);
       setMicrobitStatus('disconnected');
@@ -497,21 +538,19 @@ export default function App() {
   };
 
   return (
-    <div className={`flex min-h-screen bg-app-bg text-text-main relative overflow-hidden transition-colors duration-300 ${
-      theme === 'dark' ? 'ambient-glow-dark' : 'ambient-glow-light'
-    }`}>
+    <div className={`flex min-h-screen bg-app-bg text-text-main relative overflow-hidden transition-colors duration-300 ${theme === 'dark' ? 'ambient-glow-dark' : 'ambient-glow-light'
+      }`}>
       {/* Mobile Menu Toggle Overlay */}
       {isSidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar Navigation */}
-      <aside className={`fixed md:relative z-50 w-64 h-screen bg-panel-bg/95 backdrop-blur-xl border-r border-border-custom transition-transform duration-300 flex flex-col ${
-        isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-      }`}>
+      <aside className={`fixed md:relative z-50 w-64 h-screen bg-panel-bg/95 backdrop-blur-xl border-r border-border-custom transition-transform duration-300 flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}>
         <div className="p-6 flex items-center gap-4 border-b border-border-custom">
           <div className="w-10 h-10 bg-energy-cyan rounded-xl flex items-center justify-center shadow-lg shadow-energy-cyan/20">
             <Zap className="w-5 h-5 text-app-bg" />
@@ -529,29 +568,27 @@ export default function App() {
         <nav className="p-4 flex-1 space-y-2">
           <button
             onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-display font-semibold text-sm ${
-              currentView === 'dashboard' 
-                ? 'bg-energy-cyan/15 text-energy-cyan border border-energy-cyan/30' 
-                : 'text-text-sub hover:text-text-main hover:bg-panel-hover border border-transparent'
-            }`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-display font-semibold text-sm ${currentView === 'dashboard'
+              ? 'bg-energy-cyan/15 text-energy-cyan border border-energy-cyan/30'
+              : 'text-text-sub hover:text-text-main hover:bg-panel-hover border border-transparent'
+              }`}
           >
             <LayoutDashboard className="w-5 h-5" />
             Dashboard
           </button>
           <button
             onClick={() => { setCurrentView('breakdown'); setIsSidebarOpen(false); }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-display font-semibold text-sm ${
-              currentView === 'breakdown' 
-                ? 'bg-energy-cyan/15 text-energy-cyan border border-energy-cyan/30' 
-                : 'text-text-sub hover:text-text-main hover:bg-panel-hover border border-transparent'
-            }`}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-display font-semibold text-sm ${currentView === 'breakdown'
+              ? 'bg-energy-cyan/15 text-energy-cyan border border-energy-cyan/30'
+              : 'text-text-sub hover:text-text-main hover:bg-panel-hover border border-transparent'
+              }`}
           >
             <BarChart3 className="w-5 h-5" />
             Usage Breakdown
           </button>
         </nav>
 
-        <div 
+        <div
           onClick={() => { setCurrentView('profile'); setIsSidebarOpen(false); }}
           className="p-4 border-t border-border-custom flex items-center gap-3 hover:bg-panel-hover cursor-pointer transition-colors"
         >
@@ -568,7 +605,7 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 h-screen overflow-y-auto relative z-10" id="watts-up-container">
         <div className="w-full mx-auto px-4 py-6 md:px-8 md:py-8">
-          
+
           {/* Mobile Header Toggle */}
           <div className="md:hidden flex items-center justify-between mb-6">
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-panel-bg rounded-lg border border-border-custom">
@@ -582,159 +619,156 @@ export default function App() {
               <WelcomeMessage firstName={mockUser.firstName} />
 
               {/* UTILITY HEADER SECTION */}
-          <header className="flex items-center justify-between gap-2 sm:gap-4 bg-panel-bg/80 backdrop-blur p-2 sm:p-4 rounded-xl border border-border-custom mb-8" id="app-header">
-            <div className="flex items-center gap-2">
-              {/* Tariff Configuration */}
-              <div className="flex items-center gap-1 sm:gap-2 bg-app-bg border border-border-custom px-2 sm:px-3 py-1.5 rounded-lg">
-                <span className="hidden sm:inline text-[10px] font-display font-bold text-text-sub uppercase tracking-wider">
-                  Tariff:
-                </span>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={tariffRate}
-                    onChange={handleTariffChange}
-                    className="w-12 sm:w-14 bg-panel-hover text-energy-green text-xs font-mono font-bold px-1.5 py-0.5 rounded focus:outline-none focus:ring-1 focus:ring-energy-cyan text-right border-none"
-                    id="tariff-rate-input"
-                  />
-                  <span className="text-[10px] font-mono font-semibold text-text-dim">
-                    RM/kWh
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1 sm:gap-2">
-              {/* micro:bit Mode Toggle & Pairing Button */}
-              <div className="flex items-center gap-1.5 bg-app-bg border border-border-custom p-1 rounded-lg">
-                {/* USB Mode Tab */}
-                <button
-                  onClick={() => setConnectionMode('usb')}
-                  disabled={microbitStatus === 'connected' || microbitStatus === 'connecting'}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-display font-medium transition-colors cursor-pointer ${
-                    connectionMode === 'usb'
-                      ? 'bg-energy-cyan/20 text-energy-cyan font-semibold border border-energy-cyan/30'
-                      : 'text-text-sub hover:text-text-main'
-                  }`}
-                  title="USB Cable (Web Serial API)"
-                >
-                  <Usb className="w-3.5 h-3.5" />
-                  <span className="hidden md:inline">USB Cable</span>
-                </button>
-                {/* Bluetooth Mode Tab */}
-                <button
-                  onClick={() => setConnectionMode('bluetooth')}
-                  disabled={microbitStatus === 'connected' || microbitStatus === 'connecting'}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-display font-medium transition-colors cursor-pointer ${
-                    connectionMode === 'bluetooth'
-                      ? 'bg-energy-cyan/20 text-energy-cyan font-semibold border border-energy-cyan/30'
-                      : 'text-text-sub hover:text-text-main'
-                  }`}
-                  title="Bluetooth Wireless (Web Bluetooth API)"
-                >
-                  <Radio className="w-3.5 h-3.5" />
-                  <span className="hidden md:inline">Bluetooth</span>
-                </button>
-
-                {/* Connect / Disconnect Action Button */}
-                {microbitStatus === 'connected' ? (
-                  <button
-                    onClick={disconnectMicrobit}
-                    className="bg-energy-amber/15 hover:bg-energy-amber/20 border border-energy-amber/30 text-energy-amber font-display font-semibold text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ml-1"
-                  >
-                    <Cpu className="w-3.5 h-3.5" />
-                    <span>Disconnect</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={connectMicrobit}
-                    disabled={microbitStatus === 'connecting'}
-                    className="bg-energy-cyan/15 hover:bg-energy-cyan/25 text-energy-cyan border border-energy-cyan/30 font-display font-semibold text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ml-1"
-                  >
-                    <Cpu className="w-3.5 h-3.5" />
-                    <span>
-                      {microbitStatus === 'connecting'
-                        ? 'Connecting…'
-                        : `Connect (${connectionMode === 'usb' ? 'USB' : 'BLE'})`}
+              <header className="flex items-center justify-between gap-2 sm:gap-4 bg-panel-bg/80 backdrop-blur p-2 sm:p-4 rounded-xl border border-border-custom mb-8" id="app-header">
+                <div className="flex items-center gap-2">
+                  {/* Tariff Configuration */}
+                  <div className="flex items-center gap-1 sm:gap-2 bg-app-bg border border-border-custom px-2 sm:px-3 py-1.5 rounded-lg">
+                    <span className="hidden sm:inline text-[10px] font-display font-bold text-text-sub uppercase tracking-wider">
+                      Tariff:
                     </span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={tariffRate}
+                        onChange={handleTariffChange}
+                        className="w-12 sm:w-14 bg-panel-hover text-energy-green text-xs font-mono font-bold px-1.5 py-0.5 rounded focus:outline-none focus:ring-1 focus:ring-energy-cyan text-right border-none"
+                        id="tariff-rate-input"
+                      />
+                      <span className="text-[10px] font-mono font-semibold text-text-dim">
+                        RM/kWh
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 sm:gap-2">
+                  {/* micro:bit Mode Toggle & Pairing Button */}
+                  <div className="flex items-center gap-1.5 bg-app-bg border border-border-custom p-1 rounded-lg">
+                    {/* USB Mode Tab */}
+                    <button
+                      onClick={() => setConnectionMode('usb')}
+                      disabled={microbitStatus === 'connected' || microbitStatus === 'connecting'}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-display font-medium transition-colors cursor-pointer ${connectionMode === 'usb'
+                        ? 'bg-energy-cyan/20 text-energy-cyan font-semibold border border-energy-cyan/30'
+                        : 'text-text-sub hover:text-text-main'
+                        }`}
+                      title="USB Cable (Web Serial API)"
+                    >
+                      <Usb className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline">USB Cable</span>
+                    </button>
+                    {/* Bluetooth Mode Tab */}
+                    <button
+                      onClick={() => setConnectionMode('bluetooth')}
+                      disabled={microbitStatus === 'connected' || microbitStatus === 'connecting'}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-display font-medium transition-colors cursor-pointer ${connectionMode === 'bluetooth'
+                        ? 'bg-energy-cyan/20 text-energy-cyan font-semibold border border-energy-cyan/30'
+                        : 'text-text-sub hover:text-text-main'
+                        }`}
+                      title="Bluetooth Wireless (Web Bluetooth API)"
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline">Bluetooth</span>
+                    </button>
+
+                    {/* Connect / Disconnect Action Button */}
+                    {microbitStatus === 'connected' ? (
+                      <button
+                        onClick={disconnectMicrobit}
+                        className="bg-energy-amber/15 hover:bg-energy-amber/20 border border-energy-amber/30 text-energy-amber font-display font-semibold text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ml-1"
+                      >
+                        <Cpu className="w-3.5 h-3.5" />
+                        <span>Disconnect</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={connectMicrobit}
+                        disabled={microbitStatus === 'connecting'}
+                        className="bg-energy-cyan/15 hover:bg-energy-cyan/25 text-energy-cyan border border-energy-cyan/30 font-display font-semibold text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ml-1"
+                      >
+                        <Cpu className="w-3.5 h-3.5" />
+                        <span>
+                          {microbitStatus === 'connecting'
+                            ? 'Connecting…'
+                            : `Connect (${connectionMode === 'usb' ? 'USB' : 'BLE'})`}
+                        </span>
+                      </button>
+                    )}
+
+                    {/* Help Guide Button */}
+                    <button
+                      onClick={() => setShowMicrobitGuide(true)}
+                      className="p-1.5 text-text-sub hover:text-energy-cyan hover:bg-panel-hover rounded transition-colors cursor-pointer ml-0.5"
+                      title="micro:bit Connection Help Guide"
+                    >
+                      <HelpCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Theme Toggle Button */}
+                  <button
+                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                    className="p-2 bg-panel-hover border border-border-custom rounded-lg transition-all text-text-sub hover:text-text-main focus:outline-none cursor-pointer"
+                    title={`Switch Theme`}
+                  >
+                    {theme === 'dark' ? <Sun className="w-4 h-4 text-energy-amber" /> : <Moon className="w-4 h-4 text-energy-cyan" />}
                   </button>
-                )}
 
-                {/* Help Guide Button */}
-                <button
-                  onClick={() => setShowMicrobitGuide(true)}
-                  className="p-1.5 text-text-sub hover:text-energy-cyan hover:bg-panel-hover rounded transition-colors cursor-pointer ml-0.5"
-                  title="micro:bit Connection Help Guide"
-                >
-                  <HelpCircle className="w-4 h-4" />
-                </button>
-              </div>
+                  {/* Reset All Button */}
+                  <button
+                    onClick={() => setShowResetConfirm(true)}
+                    className="p-2 bg-panel-hover hover:bg-energy-red/10 border border-border-custom hover:border-energy-red/40 text-text-sub hover:text-energy-red rounded-lg transition-all cursor-pointer"
+                    title="Reset Data"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </button>
+                </div>
+              </header>
 
-              {/* Theme Toggle Button */}
-              <button
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                className="p-2 bg-panel-hover border border-border-custom rounded-lg transition-all text-text-sub hover:text-text-main focus:outline-none cursor-pointer"
-                title={`Switch Theme`}
-              >
-                {theme === 'dark' ? <Sun className="w-4 h-4 text-energy-amber" /> : <Moon className="w-4 h-4 text-energy-cyan" />}
-              </button>
-
-              {/* Reset All Button */}
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                className="p-2 bg-panel-hover hover:bg-energy-red/10 border border-border-custom hover:border-energy-red/40 text-text-sub hover:text-energy-red rounded-lg transition-all cursor-pointer"
-                title="Reset Data"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            </div>
-          </header>
-
-          {/* INLINE MICRO:BIT CONNECTION STATUS SUBBAR */}
-          <div className="mb-6 flex flex-wrap gap-3 items-center justify-between" id="microbit-status-subbar">
-            {/* Inline Connection Readout */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-2 bg-panel-bg/40 border border-border-custom/40 px-3 py-1 rounded-lg text-[11px]">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    microbitStatus === 'connected'
-                      ? 'bg-energy-cyan animate-pulse shadow-[0_0_8px_var(--accent-cyan)]'
-                      : microbitStatus === 'connecting'
-                      ? 'bg-energy-amber animate-bounce'
-                      : 'bg-text-dim/50'
-                  }`}
-                />
-                <span className="font-display font-medium text-text-sub">
-                  {microbitStatus === 'connected' ? (
-                    <>Connected to <span className="text-energy-cyan font-bold font-mono">{connectedDeviceName}</span></>
-                  ) : microbitStatus === 'connecting' ? (
-                    `Establishing ${connectionMode === 'usb' ? 'USB Serial' : 'Bluetooth'} link…`
-                  ) : (
-                    <>
-                      micro:bit Disconnected ({connectionMode === 'usb' ? 'USB Mode' : 'Bluetooth Mode'})
-                    </>
+              {/* INLINE MICRO:BIT CONNECTION STATUS SUBBAR */}
+              <div className="mb-6 flex flex-wrap gap-3 items-center justify-between" id="microbit-status-subbar">
+                {/* Inline Connection Readout */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2 bg-panel-bg/40 border border-border-custom/40 px-3 py-1 rounded-lg text-[11px]">
+                    <span
+                      className={`w-2 h-2 rounded-full ${microbitStatus === 'connected'
+                        ? 'bg-energy-cyan animate-pulse shadow-[0_0_8px_var(--accent-cyan)]'
+                        : microbitStatus === 'connecting'
+                          ? 'bg-energy-amber animate-bounce'
+                          : 'bg-text-dim/50'
+                        }`}
+                    />
+                    <span className="font-display font-medium text-text-sub">
+                      {microbitStatus === 'connected' ? (
+                        <>Connected to <span className="text-energy-cyan font-bold font-mono">{connectedDeviceName}</span></>
+                      ) : microbitStatus === 'connecting' ? (
+                        `Establishing ${connectionMode === 'usb' ? 'USB Serial' : 'Bluetooth'} link…`
+                      ) : (
+                        <>
+                          micro:bit Disconnected ({connectionMode === 'usb' ? 'USB Mode' : 'Bluetooth Mode'})
+                        </>
+                      )}
+                    </span>
+                  </div>
+                  {microbitError && (
+                    <span className="bg-energy-red/10 border border-energy-red/20 text-energy-red text-[10px] font-display font-medium px-2 py-1 rounded-lg">
+                      {microbitError}
+                    </span>
                   )}
-                </span>
-              </div>
-              {microbitError && (
-                <span className="bg-energy-red/10 border border-energy-red/20 text-energy-red text-[10px] font-display font-medium px-2 py-1 rounded-lg">
-                  {microbitError}
-                </span>
-              )}
-              <button
-                onClick={() => setShowMicrobitGuide(true)}
-                className="text-[10px] text-energy-cyan hover:underline font-mono"
-              >
-                [Setup Instructions & Help]
-              </button>
-            </div>
+                  <button
+                    onClick={() => setShowMicrobitGuide(true)}
+                    className="text-[10px] text-energy-cyan hover:underline font-mono"
+                  >
+                    [Setup Instructions & Help]
+                  </button>
+                </div>
 
-            {/* Portal target for export button in mobile view */}
-            <div id="subbar-right-portal" className="flex items-center justify-end md:hidden" />
-          </div>
-          </>
+                {/* Portal target for export button in mobile view */}
+                <div id="subbar-right-portal" className="flex items-center justify-end md:hidden" />
+              </div>
+            </>
           )}
 
           {currentView === 'dashboard' ? (
@@ -746,7 +780,7 @@ export default function App() {
                   <div className="absolute top-4 left-5 text-[10px] font-bold text-text-sub tracking-widest uppercase">
                     Live Load Meter
                   </div>
-                  
+
                   <div className="mt-6">
                     <CircularGauge totalWattage={instantaneousWattage} theme={theme} />
                   </div>
@@ -804,29 +838,29 @@ export default function App() {
 
                     {/* Add Appliance Dropdown */}
                     <div className="relative" ref={addMenuRef}>
-                    <button 
-                      onClick={() => setShowAddMenu(!showAddMenu)}
-                      disabled={availableToAdd.length === 0}
-                      className="bg-panel-bg hover:bg-panel-hover border border-border-custom text-text-sub hover:text-text-main px-3 py-1.5 rounded-lg text-xs font-display font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Add Unit
-                    </button>
-                    {showAddMenu && availableToAdd.length > 0 && (
-                      <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-48 bg-panel-bg border border-border-custom rounded-xl shadow-xl z-50 py-1 overflow-hidden">
-                        {availableToAdd.map(app => (
-                          <button
-                            key={app.id}
-                            onClick={() => handleAddAppliance(app)}
-                            className="w-full text-left px-4 py-2 text-xs font-display font-medium text-text-sub hover:text-text-main hover:bg-panel-hover transition-colors flex items-center justify-between cursor-pointer"
-                          >
-                            <span>{app.name}</span>
-                            <span className="text-[9px] font-mono text-text-dim">{app.wattage}W</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                      <button
+                        onClick={() => setShowAddMenu(!showAddMenu)}
+                        disabled={availableToAdd.length === 0}
+                        className="bg-panel-bg hover:bg-panel-hover border border-border-custom text-text-sub hover:text-text-main px-3 py-1.5 rounded-lg text-xs font-display font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add Unit
+                      </button>
+                      {showAddMenu && availableToAdd.length > 0 && (
+                        <div className="absolute left-0 sm:right-0 sm:left-auto mt-2 w-48 bg-panel-bg border border-border-custom rounded-xl shadow-xl z-50 py-1 overflow-hidden">
+                          {availableToAdd.map(app => (
+                            <button
+                              key={app.id}
+                              onClick={() => handleAddAppliance(app)}
+                              className="w-full text-left px-4 py-2 text-xs font-display font-medium text-text-sub hover:text-text-main hover:bg-panel-hover transition-colors flex items-center justify-between cursor-pointer"
+                            >
+                              <span>{app.name}</span>
+                              <span className="text-[9px] font-mono text-text-dim">{app.wattage}W</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -841,7 +875,7 @@ export default function App() {
                         onToggle={handleToggleAppliance}
                         onWattageChange={handleWattageChange}
                       />
-                      <button 
+                      <button
                         onClick={() => setAppliances(prev => prev.filter(a => a.id !== app.id))}
                         className="absolute -top-2 -right-2 bg-panel-bg hover:bg-energy-red/20 text-text-dim hover:text-energy-red border border-border-custom rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 cursor-pointer"
                         title="Remove unit"
@@ -988,6 +1022,99 @@ export default function App() {
                 className="bg-energy-cyan text-app-bg font-display font-bold text-xs px-5 py-2 rounded-xl hover:bg-energy-cyan/90 transition-colors cursor-pointer"
               >
                 Got It!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MICRO:BIT BUTTON ASSIGNMENT MODAL */}
+      {showMicrobitAssignModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center z-50 p-4" id="microbit-assign-modal">
+          <div className="bg-panel-bg border border-border-custom rounded-2xl p-6 max-w-sm w-full shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setShowMicrobitAssignModal(false)}
+              className="absolute top-4 right-4 p-1.5 text-text-dim hover:text-text-main bg-panel-hover rounded-lg border border-border-custom transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 text-energy-cyan mb-6">
+              <Cpu className="w-6 h-6" />
+              <h3 className="font-display font-bold text-lg text-text-main">
+                Assign Buttons
+              </h3>
+            </div>
+
+            <p className="text-text-sub text-xs mb-6">
+              Connect your micro:bit buttons to specific appliances. Selected appliances will be added to your dashboard if they are not already present.
+            </p>
+
+            <div className="space-y-4 mb-8">
+              {/* Button A Dropdown */}
+              <div>
+                <label className="block text-xs font-display font-bold text-text-main mb-2">Button A</label>
+                <select
+                  value={tempAssignments.A || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTempAssignments(prev => ({
+                      ...prev,
+                      A: val,
+                      // Prevent duplicate assignments
+                      ...(prev.B === val && val !== '' ? { B: '' } : {})
+                    }));
+                  }}
+                  className="w-full bg-app-bg border border-border-custom rounded-lg p-2.5 text-sm text-text-main focus:outline-none focus:border-energy-cyan"
+                >
+                  <option value="">-- None --</option>
+                  {ALL_APPLIANCES.map(app => (
+                    <option key={app.id} value={app.id} disabled={tempAssignments.B === app.id}>
+                      {app.name} ({app.wattage}W)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Button B Dropdown */}
+              <div>
+                <label className="block text-xs font-display font-bold text-text-main mb-2">Button B</label>
+                <select
+                  value={tempAssignments.B || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTempAssignments(prev => ({
+                      ...prev,
+                      B: val,
+                      // Prevent duplicate assignments
+                      ...(prev.A === val && val !== '' ? { A: '' } : {})
+                    }));
+                  }}
+                  className="w-full bg-app-bg border border-border-custom rounded-lg p-2.5 text-sm text-text-main focus:outline-none focus:border-energy-cyan"
+                >
+                  <option value="">-- None --</option>
+                  {ALL_APPLIANCES.map(app => (
+                    <option key={app.id} value={app.id} disabled={tempAssignments.A === app.id}>
+                      {app.name} ({app.wattage}W)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowMicrobitAssignModal(false)}
+                className="bg-panel-hover text-text-sub hover:text-text-main px-4 py-2 rounded-xl border border-border-custom transition-colors font-display text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAssignments}
+                className="bg-energy-cyan text-app-bg hover:bg-energy-cyan/90 px-5 py-2 rounded-xl transition-colors shadow-md font-display text-xs font-bold flex items-center gap-2 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                Save
               </button>
             </div>
           </div>
